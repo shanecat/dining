@@ -21,6 +21,8 @@
     input { width:100%; min-height:46px; border:1px solid #cbd5e1; border-radius:10px; padding:0 13px; color:var(--ink); font:inherit; font-size:1rem; outline:none; transition:border-color .15s,box-shadow .15s; }
     input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(36,99,235,.14); }
     .amount { min-height:46px; display:flex; align-items:center; justify-content:flex-end; padding:0 4px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .settings { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; padding:18px; margin-bottom:24px; border:1px solid var(--line); border-radius:14px; background:var(--pale); }
+    .setting-label { display:grid; gap:7px; color:var(--muted); font-size:.86rem; }
     button { font:inherit; cursor:pointer; border:0; }
     .delete { width:42px; height:42px; border-radius:10px; background:#fff1f0; color:var(--red); font-size:1.2rem; }
     .delete:hover { background:#ffe1df; }
@@ -44,12 +46,12 @@
       .labels { display:none; }
       .expense-row { grid-template-columns:1fr 44px; gap:8px; padding:14px 0; }
       .expense-row::before { content:"未含服務費"; grid-column:1 / -1; color:var(--muted); font-size:.82rem; }
-      .details { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-      .amount { justify-content:flex-start; min-height:auto; display:block; padding:3px 0; font-size:.9rem; }
+      .amount { grid-column:1 / -1; justify-content:flex-start; min-height:auto; display:block; padding:3px 0; font-size:.9rem; }
       .amount::before { display:block; margin-bottom:3px; color:var(--muted); font-size:.75rem; }
-      .fee::before { content:"服務費 10%"; }
+      .fee::before { content:"服務費金額"; }
       .with-fee::before { content:"含服務費"; }
       .delete { grid-column:2; grid-row:2; align-self:center; }
+      .settings { grid-template-columns:1fr; gap:12px; }
     }
   </style>
 </head>
@@ -58,23 +60,28 @@
     <section class="card" aria-labelledby="page-title">
       <header>
         <h1 id="page-title">聚餐費用規劃</h1>
-        <p>輸入各筆未含服務費金額，即時查看 10% 服務費與總計。</p>
+        <p>輸入各筆餐費，並設定整筆訂單的服務費比例與用餐人數。</p>
       </header>
       <div class="content">
-        <div class="labels" aria-hidden="true"><span>未含服務費</span><span>服務費 10%</span><span>含服務費</span><span></span></div>
+        <section class="settings" aria-label="聚餐設定">
+          <label class="setting-label" for="service-rate">服務費比例（%）
+            <input id="service-rate" type="number" min="0" step="0.1" inputmode="decimal" value="10" aria-label="服務費比例（百分比）">
+          </label>
+          <label class="setting-label" for="people-count">聚餐人數
+            <input id="people-count" type="number" min="0" step="1" inputmode="numeric" value="0" aria-label="聚餐人數">
+          </label>
+        </section>
+        <div class="labels" aria-hidden="true"><span>未含服務費</span><span>服務費金額</span><span>含服務費</span><span></span></div>
         <div id="expense-list"></div>
         <button class="add" id="add-row" type="button">＋ 新增一筆費用</button>
         <section class="summary" aria-live="polite" aria-label="費用總計">
           <h2>費用總計</h2>
-          <div class="subsidy-input">
-            <label for="people-count">聚餐人數<small>每人補助上限 NT$2,000</small></label>
-            <input id="people-count" type="number" min="0" step="1" inputmode="numeric" value="0" aria-label="聚餐人數">
-          </div>
-          <div class="summary-line"><span>總補助上限</span><strong id="subsidy-total">NT$2,000</strong></div>
+          <p class="subsidy-note">每人補助上限 NT$2,000</p>
+          <div class="summary-line"><span>總補助上限</span><strong id="subsidy-total">NT$0</strong></div>
           <div class="summary-line"><span>未含服務費總額</span><strong id="subtotal">NT$0</strong></div>
           <div class="summary-line"><span>服務費總額</span><strong id="fee-total">NT$0</strong></div>
           <div class="summary-line total"><span>含服務費總額</span><strong id="grand-total">NT$0</strong></div>
-          <div class="summary-line alert" id="budget-alert"><span>告警</span><strong id="budget-message">尚餘 NT$2,000</strong></div>
+          <div class="summary-line alert" id="budget-alert"><span>告警</span><strong id="budget-message">尚餘 NT$0</strong></div>
         </section>
         <p class="note">金額僅在此瀏覽器頁面中即時計算，關閉或重新整理頁面後不會保留。</p>
       </div>
@@ -83,34 +90,35 @@
   <template id="row-template">
     <div class="expense-row">
       <input class="base" type="number" min="0" step="1" inputmode="decimal" placeholder="例如：2,500" aria-label="未含服務費金額">
-      <div class="details">
-        <output class="amount fee">NT$0</output>
-        <output class="amount with-fee">NT$0</output>
-      </div>
+      <output class="amount fee">NT$0</output>
+      <output class="amount with-fee">NT$0</output>
       <button class="delete" type="button" aria-label="刪除這筆費用" title="刪除這筆費用">×</button>
     </div>
   </template>
   <script>
     const list = document.querySelector('#expense-list');
     const peopleCount = document.querySelector('#people-count');
+    const serviceRate = document.querySelector('#service-rate');
     const subsidyPerPerson = 2000;
     const formatter = new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 });
     const money = value => formatter.format(Math.round(value));
     const update = () => {
       let subtotal = 0;
+      let feeTotal = 0;
+      const rate = Math.max(0, Number(serviceRate.value) || 0);
       list.querySelectorAll('.expense-row').forEach(row => {
         const base = Math.max(0, Number(row.querySelector('.base').value) || 0);
-        const fee = base * 0.1;
+        const fee = base * rate / 100;
         subtotal += base;
+        feeTotal += fee;
         row.querySelector('.fee').value = money(fee);
         row.querySelector('.with-fee').value = money(base + fee);
       });
-      const fee = subtotal * 0.1;
-      const grandTotal = subtotal + fee;
+      const grandTotal = subtotal + feeTotal;
       const subsidyTotal = Math.max(0, Number(peopleCount.value) || 0) * subsidyPerPerson;
       const balance = subsidyTotal - grandTotal;
       document.querySelector('#subtotal').textContent = money(subtotal);
-      document.querySelector('#fee-total').textContent = money(fee);
+      document.querySelector('#fee-total').textContent = money(feeTotal);
       document.querySelector('#grand-total').textContent = money(grandTotal);
       document.querySelector('#subsidy-total').textContent = money(subsidyTotal);
       const alert = document.querySelector('#budget-alert');
@@ -127,6 +135,7 @@
       update();
     };
     document.querySelector('#add-row').addEventListener('click', () => addRow());
+    serviceRate.addEventListener('input', update);
     peopleCount.addEventListener('input', update);
     addRow(false);
   </script>
